@@ -1,0 +1,170 @@
+name: Release Cross-Platform Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: |
+        mkdir -p build-mac
+        cd build-mac
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+    
+    - name: Build
+      run: |
+        cd build-mac
+        cmake --build . --config Release
+        
+    - name: Run tests
+      run: |
+        cd build-mac
+        ctest --verbose
+        
+    - name: Package binaries
+      run: |
+        mkdir -p bin/macos
+        cp build-mac/bin/RandomGenExample bin/macos/RandomGenExample
+        cp build-mac/bin/RandomGenTests bin/macos/RandomGenTests
+        chmod +x bin/macos/RandomGenExample
+        chmod +x bin/macos/RandomGenTests
+        cd bin
+        zip -r RandomGen-macos-${{ github.event.inputs.version }}.zip macos/
+        
+    - name: Upload macOS binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-binaries
+        path: bin/RandomGen-macos-${{ github.event.inputs.version }}.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: |
+        mkdir build-windows
+        cd build-windows
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    
+    - name: Build
+      run: |
+        cd build-windows
+        cmake --build . --config Release
+        
+    - name: Run tests
+      run: |
+        cd build-windows
+        ctest -C Release --verbose
+        
+    - name: Package binaries
+      run: |
+        if (!(Test-Path -Path "bin/windows")) {
+          New-Item -Path "bin/windows" -ItemType Directory -Force
+        }
+        Copy-Item "build-windows/bin/Release/RandomGenExample.exe" -Destination "bin/windows/RandomGenExample.exe"
+        Copy-Item "build-windows/bin/Release/RandomGenTests.exe" -Destination "bin/windows/RandomGenTests.exe"
+        Compress-Archive -Path "bin/windows/*" -DestinationPath "bin/RandomGen-windows-${{ github.event.inputs.version }}.zip" -Force
+        
+    - name: Upload Windows binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-binaries
+        path: bin/RandomGen-windows-${{ github.event.inputs.version }}.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: |
+        mkdir -p build-linux
+        cd build-linux
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_EXE_LINKER_FLAGS="-static"
+    
+    - name: Build
+      run: |
+        cd build-linux
+        cmake --build . --config Release
+        
+    - name: Run tests
+      run: |
+        cd build-linux
+        ctest --verbose
+        
+    - name: Package binaries
+      run: |
+        mkdir -p bin/linux
+        cp build-linux/bin/RandomGenExample bin/linux/RandomGenExample
+        cp build-linux/bin/RandomGenTests bin/linux/RandomGenTests
+        chmod +x bin/linux/RandomGenExample
+        chmod +x bin/linux/RandomGenTests
+        cd bin
+        zip -r RandomGen-linux-${{ github.event.inputs.version }}.zip linux/
+        
+    - name: Upload Linux binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-binaries
+        path: bin/RandomGen-linux-${{ github.event.inputs.version }}.zip
+
+  create-release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-artifacts
+        
+    - name: Create tag
+      run: |
+        git tag ${{ github.event.inputs.version }}
+        git push origin ${{ github.event.inputs.version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ github.event.inputs.version }}
+      run: |
+        # Create release
+        gh release create $VERSION --title "Release $VERSION"
+        
+        # Upload macOS assets
+        gh release upload $VERSION release-artifacts/macos-binaries/RandomGen-macos-$VERSION.zip
+        
+        # Upload Windows assets
+        gh release upload $VERSION release-artifacts/windows-binaries/RandomGen-windows-$VERSION.zip
+        
+        # Upload Linux assets
+        gh release upload $VERSION release-artifacts/linux-binaries/RandomGen-linux-$VERSION.zip
