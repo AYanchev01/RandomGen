@@ -37,8 +37,8 @@ jobs:
     - name: Package binaries
       run: |
         mkdir -p bin/macos
-        cp build-mac/bin/RandomGenExample bin/macos/RandomGenExample
-        cp build-mac/bin/RandomGenTests bin/macos/RandomGenTests
+        cp build-mac/bin/Release/RandomGenExample bin/macos/RandomGenExample
+        cp build-mac/bin/Release/RandomGenTests bin/macos/RandomGenTests
         chmod +x bin/macos/RandomGenExample
         chmod +x bin/macos/RandomGenTests
         cd bin
@@ -118,8 +118,8 @@ jobs:
     - name: Package binaries
       run: |
         mkdir -p bin/linux
-        cp build-linux/bin/RandomGenExample bin/linux/RandomGenExample
-        cp build-linux/bin/RandomGenTests bin/linux/RandomGenTests
+        cp build-linux/bin/Release/RandomGenExample bin/linux/RandomGenExample
+        cp build-linux/bin/Release/RandomGenTests bin/linux/RandomGenTests
         chmod +x bin/linux/RandomGenExample
         chmod +x bin/linux/RandomGenTests
         cd bin

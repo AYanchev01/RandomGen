@@ -18,8 +18,7 @@ RUN mkdir -p build && \
 FROM debian:bullseye-slim
 
 WORKDIR /app
-
-COPY --from=builder /app/build/bin/ /app/bin/
+COPY --from=builder /app/build/bin/Release/ /app/bin/
 COPY docker-entrypoint.sh /app/
 
 RUN chmod +x /app/docker-entrypoint.sh
