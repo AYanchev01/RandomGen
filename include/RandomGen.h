@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <stdexcept>
+#include <mutex>
 
 /**
  * @brief RandomGen class that returns random numbers based on specified probabilities
@@ -14,7 +15,8 @@ private:
     std::vector<double> probabilities;
     std::vector<double> cumulativeProbabilities;
     
-    static thread_local std::mt19937 gen;
+    static std::mt19937 gen;
+    static std::mutex genMutex;
     std::uniform_real_distribution<double> dist;
 
 public:
@@ -38,4 +40,13 @@ public:
      * @return int A randomly selected number
      */
     int nextNum() noexcept;
+    
+    /**
+     * @brief Sets a custom seed for the random number generator
+     * 
+     * This method affects all instances of RandomGen across all threads.
+     * 
+     * @param seed The seed value to use
+     */
+    static void setSeed(unsigned int seed);
 };

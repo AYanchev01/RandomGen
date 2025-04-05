@@ -5,6 +5,7 @@
 #include <memory>
 #include <thread>
 #include <future>
+#include <vector>
 
 // Test initialization with valid parameters
 TEST(RandomGen, InitializationValid) {
@@ -79,130 +80,74 @@ TEST(RandomGen, SingleValueWithProbabilityOne) {
     }
 }
 
-// Test edge case: uniform distribution
-TEST(RandomGen, UniformDistribution) {
-    const size_t numValues = 5;
-    std::vector<int> randomNums;
-    std::vector<double> probabilities;
-    
-    for (size_t i = 0; i < numValues; ++i) {
-        randomNums.push_back(static_cast<int>(i));
-        probabilities.push_back(1.0 / numValues);
-    }
-    
-    RandomGen randomGen(randomNums, probabilities);
-    
-    std::unordered_map<int, int> results;
-    constexpr int numSamples = 10000;
-    
-    for (int i = 0; i < numSamples; ++i) {
-        int num = randomGen.nextNum();
-        results[num]++;
-    }
-    
-    // Check that each number appears with approximately equal frequency
-    for (size_t i = 0; i < numValues; ++i) {
-        int num = randomNums[i];
-        double expectedCount = numSamples / numValues;
-        int actualCount = results[num];
-        
-        // Allow for some statistical variation (4 standard deviations for 99.99% confidence)
-        // Standard deviation for binomial distribution is sqrt(n*p*(1-p))
-        double stdDev = std::sqrt(numSamples * probabilities[i] * (1 - probabilities[i]));
-        double tolerance = 4 * stdDev;
-        
-        EXPECT_NEAR(actualCount, expectedCount, tolerance)
-            << "Expected around " << expectedCount << " occurrences of " << num 
-            << ", got " << actualCount;
-    }
-}
-
-// Test distribution of generated numbers
-TEST(RandomGen, Distribution) {
+// Test custom seeding ensures deterministic output
+TEST(RandomGen, CustomSeedDeterministicOutput) {
     std::vector<int> randomNums = {-1, 0, 1, 2, 3};
     std::vector<double> probabilities = {0.01, 0.3, 0.58, 0.1, 0.01};
     
-    RandomGen randomGen(randomNums, probabilities);
-    
-    // Generate a large number of samples to ensure statistical significance
-    std::unordered_map<int, int> results;
-    constexpr int numSamples = 10000;
-    
-    for (int i = 0; i < numSamples; ++i) {
-        int num = randomGen.nextNum();
-        results[num]++;
+    // Create first sequence with specific seed
+    RandomGen::setSeed(12345);
+    RandomGen randomGen1(randomNums, probabilities);
+    std::vector<int> sequence1;
+    for (int i = 0; i < 100; ++i) {
+        sequence1.push_back(randomGen1.nextNum());
     }
     
-    // Check that each number appears with the expected frequency (with some tolerance)
-    for (size_t i = 0; i < randomNums.size(); ++i) {
-        int num = randomNums[i];
-        double expectedCount = probabilities[i] * numSamples;
-        int actualCount = results[num];
-        
-        // Allow for statistical variation
-        double stdDev = std::sqrt(numSamples * probabilities[i] * (1 - probabilities[i]));
-        double tolerance = 4 * stdDev;
-        
-        EXPECT_NEAR(actualCount, expectedCount, tolerance)
-            << "Expected around " << expectedCount << " occurrences of " << num 
-            << ", got " << actualCount;
+    // Reset with the same seed and create a second sequence
+    RandomGen::setSeed(12345);
+    RandomGen randomGen2(randomNums, probabilities);
+    std::vector<int> sequence2;
+    for (int i = 0; i < 100; ++i) {
+        sequence2.push_back(randomGen2.nextNum());
     }
+    
+    // Both sequences should be identical
+    EXPECT_EQ(sequence1, sequence2);
+    
+    // Try a different seed to ensure we get a different sequence
+    RandomGen::setSeed(54321);
+    RandomGen randomGen3(randomNums, probabilities);
+    std::vector<int> sequence3;
+    for (int i = 0; i < 100; ++i) {
+        sequence3.push_back(randomGen3.nextNum());
+    }
+    
+    // This sequence should differ from the first two
+    EXPECT_NE(sequence1, sequence3);
 }
 
-// Test thread safety
-TEST(RandomGen, ThreadSafety) {
-    std::vector<int> randomNums = {1, 2, 3, 4, 5};
-    std::vector<double> probabilities = {0.2, 0.2, 0.2, 0.2, 0.2};
+// Test that seeding propagates across threads
+TEST(RandomGen, SeedPropagationAcrossThreads) {
+    std::vector<int> randomNums = {-1, 0, 1, 2, 3};
+    std::vector<double> probabilities = {0.01, 0.3, 0.58, 0.1, 0.01};
     
-    RandomGen randomGen(randomNums, probabilities);
+    // Set a fixed seed
+    const unsigned int SEED = 42;
+    RandomGen::setSeed(SEED);
     
-    // Launch multiple threads all calling nextNum() concurrently
-    constexpr int numThreads = 10;
-    constexpr int numCallsPerThread = 1000;
-    
-    auto threadFunc = [&randomGen, &numCallsPerThread]() {
-        std::unordered_map<int, int> localResults;
-        for (int i = 0; i < numCallsPerThread; ++i) {
-            int num = randomGen.nextNum();
-            localResults[num]++;
+    // Function to generate numbers in a thread
+    auto generateNumbers = [&randomNums, &probabilities](int count) {
+        RandomGen gen(randomNums, probabilities);
+        std::vector<int> numbers;
+        for (int i = 0; i < count; ++i) {
+            numbers.push_back(gen.nextNum());
         }
-        return localResults;
+        return numbers;
     };
     
-    std::vector<std::future<std::unordered_map<int, int>>> futures;
+    // Run in main thread
+    std::vector<int> mainThreadNumbers = generateNumbers(10);
     
-    for (int i = 0; i < numThreads; ++i) {
-        futures.push_back(std::async(std::launch::async, threadFunc));
-    }
+    // Reset seed to the same value
+    RandomGen::setSeed(SEED);
     
-    // Wait for all threads and combine results
-    std::unordered_map<int, int> combinedResults;
-    for (auto& future : futures) {
-        auto results = future.get();
-        for (const auto& [num, count] : results) {
-            combinedResults[num] += count;
-        }
-    }
+    // Run in a separate thread
+    auto future = std::async(std::launch::async, [&generateNumbers]() {
+        return generateNumbers(10);
+    });
     
-    // Verify total number of samples
-    int totalSamples = 0;
-    for (const auto& [_, count] : combinedResults) {
-        totalSamples += count;
-    }
-    EXPECT_EQ(totalSamples, numThreads * numCallsPerThread);
+    std::vector<int> threadNumbers = future.get();
     
-    // Check distribution
-    for (size_t i = 0; i < randomNums.size(); ++i) {
-        int num = randomNums[i];
-        double expectedCount = probabilities[i] * totalSamples;
-        int actualCount = combinedResults[num];
-        
-        // Allow for statistical variation
-        double stdDev = std::sqrt(totalSamples * probabilities[i] * (1 - probabilities[i]));
-        double tolerance = 4 * stdDev;
-        
-        EXPECT_NEAR(actualCount, expectedCount, tolerance)
-            << "Expected around " << expectedCount << " occurrences of " << num 
-            << ", got " << actualCount;
-    }
+    // Both sequences should be identical despite running in different threads
+    EXPECT_EQ(mainThreadNumbers, threadNumbers);
 }

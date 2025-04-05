@@ -3,6 +3,9 @@
 #include <cmath>
 #include <string>
 
+std::mt19937 RandomGen::gen(std::random_device{}());
+std::mutex RandomGen::genMutex;
+
 RandomGen::RandomGen(const std::vector<int>& randomNums, const std::vector<double>& probabilities)
     : randomNums(randomNums), 
       probabilities(probabilities),
@@ -39,7 +42,11 @@ RandomGen::RandomGen(const std::vector<int>& randomNums, const std::vector<doubl
 
 int RandomGen::nextNum() noexcept {
     // Generate a random number between 0 and 1
-    double randomValue = dist(gen);
+    double randomValue;
+    {
+        std::lock_guard<std::mutex> lock(genMutex);
+        randomValue = dist(gen);
+    }
     
     // Find the index where randomValue would be inserted in cumulativeProbabilities
     auto it = std::lower_bound(cumulativeProbabilities.begin(), 
@@ -56,4 +63,7 @@ int RandomGen::nextNum() noexcept {
     return randomNums[index];
 }
 
-thread_local std::mt19937 RandomGen::gen(std::random_device{}());
+void RandomGen::setSeed(unsigned int seed) {
+    std::lock_guard<std::mutex> lock(genMutex);
+    gen.seed(seed);
+}
